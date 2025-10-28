@@ -9,18 +9,18 @@ public class GameManager : MonoBehaviour
 
     [Header("Game Objects")]
     [SerializeField] private Transform bird;
-    [SerializeField] private Camera mainCamera;
     [SerializeField] private GameObject[] pipePairs;
 
     [Header("Game Settings")]
     public bool isGameActive = true;
     public float jumpForce = 5f;
     public float gravity = -9.8f;
-    public float birdForwardSpeed = 2f;     // ✅ new — bird moves forward
-    public float pipeResetOffset = 30f;     // distance ahead of camera to respawn pipes
+    public float pipeMoveSpeed = 2f;        // pipes move left
+    public float pipeResetOffset = 10f;     // how far apart pipes are
     public float pipeGapRangeY = 2f;        // random Y range
 
     private float verticalVelocity = 0f;
+    private Vector3 birdStartPos;
 
     void Start()
     {
@@ -29,52 +29,48 @@ public class GameManager : MonoBehaviour
         if (gameOverText != null)
             gameOverText.SetActive(false);
 
-        if (mainCamera == null)
-            mainCamera = Camera.main;
-
         if (bird == null)
             Debug.LogError("❌ Bird not assigned!");
+
+        birdStartPos = bird.position;
+
+        // Spacebar also jumps
+        jumpButton?.onClick.AddListener(OnJump);
     }
 
     void Update()
     {
         if (!isGameActive || bird == null) return;
 
-        // === Bird movement ===
+        // === Bird movement (only vertical) ===
         verticalVelocity += gravity * Time.deltaTime;
-        bird.position += new Vector3(birdForwardSpeed * Time.deltaTime, verticalVelocity * Time.deltaTime, 0);
+        bird.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
 
-        // === Camera follows bird ===
-        if (mainCamera != null)
-        {
-            Vector3 camPos = mainCamera.transform.position;
-            camPos.x = bird.position.x + 4f; // keep camera slightly ahead
-            mainCamera.transform.position = camPos;
-        }
-
-        // === Move / recycle pipes ===
+        // === Pipes movement ===
         foreach (GameObject pipePair in pipePairs)
         {
             if (pipePair == null) continue;
 
-            // If pipe goes far behind the camera, recycle it
-            if (pipePair.transform.position.x < mainCamera.transform.position.x - 10f)
+            pipePair.transform.position += Vector3.left * pipeMoveSpeed * Time.deltaTime;
+
+            // If pipe goes off screen, recycle it
+            if (pipePair.transform.position.x < -10f)
             {
-                float newX = mainCamera.transform.position.x + pipeResetOffset;
+                float newX = GetFurthestPipeX() + pipeResetOffset;
                 float newY = Random.Range(-pipeGapRangeY, pipeGapRangeY);
                 pipePair.transform.position = new Vector3(newX, newY, 0);
             }
 
             // Simple collision detection
             float distance = Vector2.Distance(bird.position, pipePair.transform.position);
-            if (distance < 0.7f)
+            if (distance < 0.6f)
             {
                 GameOver();
             }
         }
 
-        // Stop if bird falls below view
-        if (bird.position.y < -5f)
+        // === Ground check ===
+        if (bird.position.y < -4.5f || bird.position.y > 5f)
             GameOver();
     }
 
@@ -95,5 +91,16 @@ public class GameManager : MonoBehaviour
             gameOverText.SetActive(true);
 
         Debug.Log("💥 Game Over!");
+    }
+
+    float GetFurthestPipeX()
+    {
+        float maxX = -Mathf.Infinity;
+        foreach (GameObject pipePair in pipePairs)
+        {
+            if (pipePair.transform.position.x > maxX)
+                maxX = pipePair.transform.position.x;
+        }
+        return maxX;
     }
 }
