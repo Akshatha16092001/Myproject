@@ -3,104 +3,117 @@ using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
-    [Header("UI References")]
+    [Header("UI")]
     [SerializeField] private Button jumpButton;
     [SerializeField] private GameObject gameOverText;
 
-    [Header("Game Objects")]
-    [SerializeField] private Transform bird;
+    [Header("Bird")]
+    [SerializeField] private Rigidbody2D birdRb;
+
+    [Header("Camera")]
+    [SerializeField] private Camera mainCamera;
+
+    [Header("Pipes")]
     [SerializeField] private GameObject[] pipePairs;
+    [SerializeField] private float pipeResetOffset = 25f;
+    [SerializeField] private float pipeGapRangeY = 2f;
 
     [Header("Game Settings")]
-    public bool isGameActive = true;
-    public float jumpForce = 5f;
-    public float gravity = -9.8f;
-    public float pipeMoveSpeed = 2f;        // pipes move left
-    public float pipeResetOffset = 10f;     // how far apart pipes are
-    public float pipeGapRangeY = 2f;        // random Y range
+    [SerializeField] private float forwardSpeed = 2.5f;
+    [SerializeField] private float jumpForce = 5f;
 
-    private float verticalVelocity = 0f;
-    private Vector3 birdStartPos;
+    private bool started = false;
+    private bool isGameOver = false;
 
     void Start()
     {
+        if (birdRb == null) Debug.LogError("Assign Bird Rigidbody2D in Inspector");
+        if (mainCamera == null) mainCamera = Camera.main;
+
         if (jumpButton != null)
+        {
+            jumpButton.onClick.RemoveAllListeners();
             jumpButton.onClick.AddListener(OnJump);
+        }
+
         if (gameOverText != null)
             gameOverText.SetActive(false);
 
-        if (bird == null)
-            Debug.LogError("❌ Bird not assigned!");
-
-        birdStartPos = bird.position;
-
-        // Spacebar also jumps
-        jumpButton?.onClick.AddListener(OnJump);
+        birdRb.gravityScale = 0f;
+        birdRb.velocity = Vector2.zero;
     }
 
     void Update()
     {
-        if (!isGameActive || bird == null) return;
+        if (isGameOver) return;
 
-        // === Bird movement (only vertical) ===
-        verticalVelocity += gravity * Time.deltaTime;
-        bird.position += new Vector3(0, verticalVelocity * Time.deltaTime, 0);
-
-        // === Pipes movement ===
-        foreach (GameObject pipePair in pipePairs)
+        if (started)
         {
-            if (pipePair == null) continue;
+            // Bird moves forward constantly
+            birdRb.velocity = new Vector2(forwardSpeed, birdRb.velocity.y);
 
-            pipePair.transform.position += Vector3.left * pipeMoveSpeed * Time.deltaTime;
+            // Camera follows bird
+            Vector3 camPos = mainCamera.transform.position;
+            camPos.x = birdRb.transform.position.x + 4f;
+            mainCamera.transform.position = camPos;
 
-            // If pipe goes off screen, recycle it
-            if (pipePair.transform.position.x < -10f)
+            // Recycle pipes only if they go far behind the camera
+            foreach (GameObject pipe in pipePairs)
             {
-                float newX = GetFurthestPipeX() + pipeResetOffset;
-                float newY = Random.Range(-pipeGapRangeY, pipeGapRangeY);
-                pipePair.transform.position = new Vector3(newX, newY, 0);
-            }
+                if (pipe == null) continue;
 
-            // Simple collision detection
-            float distance = Vector2.Distance(bird.position, pipePair.transform.position);
-            if (distance < 0.6f)
-            {
-                GameOver();
+                if (pipe.transform.position.x < mainCamera.transform.position.x - 10f)
+                {
+                    float newX = mainCamera.transform.position.x + pipeResetOffset;
+                    float newY = Random.Range(-pipeGapRangeY, pipeGapRangeY);
+                    pipe.transform.position = new Vector3(newX, newY, pipe.transform.position.z);
+                }
             }
         }
 
-        // === Ground check ===
-        if (bird.position.y < -4.5f || bird.position.y > 5f)
+        // Optional: Game over if bird falls too far
+        if (birdRb.transform.position.y < -6f)
             GameOver();
     }
 
-    void OnJump()
+    public void OnJump()
     {
-        if (!isGameActive) return;
-        verticalVelocity = jumpForce;
+        if (isGameOver) return;
+
+        if (!started)
+        {
+            started = true;
+            birdRb.gravityScale = 1f;
+        }
+
+        birdRb.velocity = new Vector2(forwardSpeed, jumpForce);
     }
 
-    void GameOver()
+    // === COLLISION HANDLING ===
+    void OnCollisionEnter2D(Collision2D collision)
     {
-        if (!isGameActive) return;
+        if (isGameOver) return;
 
-        isGameActive = false;
-        verticalVelocity = 0f;
+        // Check parent or self name for PipePair
+        Transform t = collision.transform;
+        if (t.name.StartsWith("PipePair") || (t.parent != null && t.parent.name.StartsWith("PipePair")))
+        {
+            Debug.Log("💥 Hit pipe: " + t.name);
+            GameOver();
+        }
+    }
+
+    private void GameOver()
+    {
+        if (isGameOver) return;
+
+        isGameOver = true;
+        birdRb.velocity = Vector2.zero;
+        birdRb.gravityScale = 0f;
 
         if (gameOverText != null)
             gameOverText.SetActive(true);
 
         Debug.Log("💥 Game Over!");
-    }
-
-    float GetFurthestPipeX()
-    {
-        float maxX = -Mathf.Infinity;
-        foreach (GameObject pipePair in pipePairs)
-        {
-            if (pipePair.transform.position.x > maxX)
-                maxX = pipePair.transform.position.x;
-        }
-        return maxX;
     }
 }
